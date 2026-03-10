@@ -15,7 +15,7 @@ Genera un **informe HTML interactivo** con:
 ## Requisitos
 
 - Python 3.10+
-- Fedora / Linux (funciona en cualquier distro)
+- Fedora / Linux (funciona en cualquier distro o cualquier sistema que pueda ejecutar Python)
 
 ```bash
 git clone <este-repo>
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 El script se autentica con tu `ww_token` de Mobvoi (una cadena de 32 caracteres). Para obtenerlo:
 
-1. Abre **Edge** o **Firefox** y ve a [h.mobvoi.com/pages/sports](https://h.mobvoi.com/pages/sports)
+1. Abre un navegador web moderno y ve a [h.mobvoi.com/pages/sports](https://h.mobvoi.com/pages/sports)
 2. Inicia sesión con tu cuenta Mobvoi
 3. Pulsa **F12** → pestaña **Network** → filtra por **Fetch/XHR**
 4. Recarga la página (F5)
@@ -50,8 +50,8 @@ cp .env.example .env
 # Edita .env y pon tu ww_token y account_id
 ```
 
-El `account_id` lo ves en las URLs de descarga:  
-`/api/sportWear3/data/accounts/**50017569**/records/...`
+El `account_id` -- (8 dígitos) lo ves en las URLs de descarga:  
+`/api/sportWear3/data/accounts/**12345678**/records/...`
 
 ---
 

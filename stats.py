@@ -32,8 +32,9 @@ def load_data(conn: sqlite3.Connection) -> list[dict]:
     return [dict(row) for row in cur.fetchall()]
 
 
-def generate_html(actividades: list[dict], output: Path):
+def generate_html(actividades: list[dict], output: Path, generated_at: datetime = None):
     data_json = json.dumps(actividades, ensure_ascii=False)
+    gen_str = generated_at.strftime("Generado el %d/%m/%Y a las %H:%M") if generated_at else ""
 
     html = f"""<!DOCTYPE html>
 <html lang="es">
@@ -93,6 +94,7 @@ header {{
   margin-bottom: 36px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }}
 header h1 {{
   font-family: var(--font-mono);
@@ -105,6 +107,13 @@ header .subtitle {{
   font-size: .85rem;
   color: var(--text-dim);
   font-family: var(--font-mono);
+}}
+header .generated {{
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  color: var(--text-dim);
+  opacity: .6;
 }}
 
 /* ═══════════════════════════════════════════════
@@ -422,6 +431,49 @@ header .subtitle {{
   font-size: .78rem;
   color: var(--text-dim);
 }}
+.rows-per-page {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--text-dim);
+}}
+.rows-per-page select {{
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}}
+.pagination {{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--text-dim);
+}}
+.pagination button {{
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+}}
+.pagination button:hover:not(:disabled) {{ background: var(--bg2); border-color: var(--accent); }}
+.pagination button:disabled {{ opacity: .35; cursor: default; }}
+.pagination .page-info {{ color: var(--text-dim); }}
 
 table {{
   width: 100%;
@@ -560,6 +612,7 @@ tbody td {{
   <header>
     <h1>⌚ TicWatch Analyzer</h1>
     <span class="subtitle">— registro de actividad física</span>
+    <span class="generated">{gen_str}</span>
   </header>
 
   <!-- CONTROLES -->
@@ -608,6 +661,15 @@ tbody td {{
     <div class="table-header">
       <h3>Actividades</h3>
       <span class="table-count" id="table-count"></span>
+      <div class="rows-per-page">
+        <label>Mostrar</label>
+        <select id="rows-per-page" onchange="changePageSize()">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="0">Todas</option>
+        </select>
+      </div>
     </div>
     <div style="overflow-x:auto">
       <table>
@@ -627,6 +689,7 @@ tbody td {{
         <tbody id="activity-table"></tbody>
       </table>
     </div>
+    <div class="pagination" id="pagination"></div>
   </div>
 
 </div>
@@ -644,6 +707,7 @@ let filtered = [...ALL_DATA];
 let sortKey  = 'fecha';
 let sortAsc  = false;
 let calYear, calMonth;
+let currentPage = 1;
 
 const TYPE_COLORS = {{}};
 const PALETTE = ['#4f8ef7','#7c5cf5','#36d986','#f59c36','#f75f5f','#36c9d9',
@@ -719,6 +783,7 @@ function applyFilters() {{
   renderSummary();
   renderBarChart();
   renderCalendar();
+  currentPage = 1;
   renderTable();
 }}
 
@@ -739,6 +804,7 @@ function sortTable(key) {{
     th.querySelector('.sort-icon').textContent = sortAsc ? '↑' : '↓';
   }}
   sortData();
+  currentPage = 1;
   renderTable();
 }}
 
@@ -981,11 +1047,40 @@ function renderCalendar() {{
 // ═══════════════════════════════════════════════
 // TABLA
 // ═══════════════════════════════════════════════
-function renderTable() {{
-  document.getElementById('table-count').textContent =
-    `${{filtered.length}} actividad${{filtered.length !== 1 ? 'es' : ''}}`;
+function changePageSize() {{
+  currentPage = 1;
+  renderTable();
+}}
 
-  const rows = filtered.map(d => {{
+function renderTable() {{
+  const pageSize = parseInt(document.getElementById('rows-per-page').value);
+  const total    = filtered.length;
+
+  // Calcular slice
+  let rows_data;
+  let totalPages = 1;
+  if (pageSize === 0) {{
+    rows_data = filtered;
+  }} else {{
+    totalPages  = Math.max(1, Math.ceil(total / pageSize));
+    currentPage = Math.min(currentPage, totalPages);
+    const start = (currentPage - 1) * pageSize;
+    rows_data   = filtered.slice(start, start + pageSize);
+  }}
+
+  // Contador
+  if (pageSize === 0 || total <= pageSize) {{
+    document.getElementById('table-count').textContent =
+      `${{total}} actividad${{total !== 1 ? 'es' : ''}}`;
+  }} else {{
+    const start = (currentPage - 1) * pageSize + 1;
+    const end   = Math.min(currentPage * pageSize, total);
+    document.getElementById('table-count').textContent =
+      `${{start}}–${{end}} de ${{total}}`;
+  }}
+
+  // Filas
+  const rows = rows_data.map(d => {{
     const min  = Math.round((d.duracion_seg||0) / 60);
     const h    = Math.floor(min/60);
     const m    = min % 60;
@@ -995,18 +1090,15 @@ function renderTable() {{
     const fc   = d.fc_media ? d.fc_media+'bpm' : '—';
     const fcx  = d.fc_max   ? d.fc_max+'bpm'   : '—';
 
-    // Velocidad media: solo si hay distancia Y duración
     let vel = '—';
     if (d.distancia_m && d.duracion_seg > 0) {{
       const kmh = (d.distancia_m / 1000) / (d.duracion_seg / 3600);
       vel = kmh.toFixed(1) + ' km/h';
     }}
 
-    // Tipo de actividad con corrección para "Otro"
     const tipo = tipoMostrado(d);
     const col  = TYPE_COLORS[tipo] || 'var(--accent)';
 
-    // Formatear fecha como DD-MM-AAAA
     const fechaFmt = d.fecha
       ? d.fecha.slice(8,10) + '-' + d.fecha.slice(5,7) + '-' + d.fecha.slice(0,4)
       : '—';
@@ -1026,6 +1118,24 @@ function renderTable() {{
 
   document.getElementById('activity-table').innerHTML = rows ||
     '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:32px;font-family:var(--font-mono)">Sin actividades en el período seleccionado</td></tr>';
+
+  // Paginación
+  const pag = document.getElementById('pagination');
+  if (pageSize === 0 || totalPages <= 1) {{
+    pag.innerHTML = '';
+    return;
+  }}
+  pag.innerHTML = `
+    <button onclick="goPage(${{currentPage-1}})" ${{currentPage===1?'disabled':''}}>‹ Ant.</button>
+    <span class="page-info">Página ${{currentPage}} / ${{totalPages}}</span>
+    <button onclick="goPage(${{currentPage+1}})" ${{currentPage===totalPages?'disabled':''}}>Sig. ›</button>
+  `;
+}}
+
+function goPage(p) {{
+  currentPage = p;
+  renderTable();
+  document.querySelector('.table-wrap').scrollIntoView({{behavior:'smooth', block:'nearest'}});
 }}
 
 // Arrancar
@@ -1057,7 +1167,7 @@ def main():
         sys.exit(1)
 
     print(f"📊 Generando informe con {len(actividades)} actividades...")
-    generate_html(actividades, args.output)
+    generate_html(actividades, args.output, datetime.now())
 
 
 if __name__ == "__main__":

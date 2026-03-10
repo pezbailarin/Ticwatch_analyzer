@@ -16,11 +16,29 @@ from pathlib import Path
 from datetime import datetime
 
 
+LOG_FILE = Path("run.log")
+
+
+def log(msg: str, file=None):
+    """Imprime en consola y añade al log."""
+    print(msg)
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(msg + "\n")
+
+
 def run(cmd: list[str], desc: str) -> bool:
-    print(f"\n{'─'*50}")
-    print(f"▶  {desc}")
-    print(f"{'─'*50}")
-    result = subprocess.run([sys.executable] + cmd)
+    sep = "─" * 50
+    log(f"\n{sep}")
+    log(f"▶  {desc}")
+    log(f"{sep}")
+    result = subprocess.run(
+        [sys.executable] + cmd,
+        capture_output=False,   # salida en tiempo real en consola
+    )
+    # Registrar solo el resultado en el log (la salida del subproceso va a consola directa)
+    status = "✅ OK" if result.returncode == 0 else f"❌ Error (código {result.returncode})"
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"   → {' '.join(cmd)}: {status}\n")
     if result.returncode != 0:
         print(f"\n❌ Error en: {' '.join(cmd)}")
         return False
@@ -38,7 +56,16 @@ def main():
     args = parser.parse_args()
 
     start = datetime.now()
-    print(f"\n🏃 TicWatch Analyzer — {start.strftime('%Y-%m-%d %H:%M')}")
+    header = f"\n{'═'*50}\n🏃 TicWatch Analyzer — {start.strftime('%Y-%m-%d %H:%M:%S')}\n{'═'*50}"
+    log(header)
+
+    # Argumentos usados
+    flags = []
+    if args.sin_retrieve: flags.append("--sin-retrieve")
+    if args.dias:         flags.append(f"--dias {args.dias}")
+    if args.forzar_todo:  flags.append("--forzar-todo")
+    if flags:
+        log(f"   Opciones: {' '.join(flags)}")
 
     if not args.sin_retrieve:
         retrieve_args = ["retrieve.py"]
@@ -47,20 +74,25 @@ def main():
         elif args.dias:
             retrieve_args += ["--dias", str(args.dias)]
         if not run(retrieve_args, "Descargando archivos .tcx de Mobvoi"):
+            log(f"   ⛔ Abortado a las {datetime.now().strftime('%H:%M:%S')}")
             sys.exit(1)
 
-    parse_args = ["parse.py"]
-    if not run(parse_args, "Importando .tcx a la base de datos"):
+    if not run(["parse.py"], "Importando .tcx a la base de datos"):
+        log(f"   ⛔ Abortado a las {datetime.now().strftime('%H:%M:%S')}")
         sys.exit(1)
 
     if not run(["stats.py"], "Generando informe HTML"):
+        log(f"   ⛔ Abortado a las {datetime.now().strftime('%H:%M:%S')}")
         sys.exit(1)
 
     elapsed = (datetime.now() - start).total_seconds()
-    print(f"\n{'═'*50}")
-    print(f"✅ Completado en {elapsed:.1f}s")
-    print(f"   Abre el informe: xdg-open informe.html")
-    print(f"{'═'*50}\n")
+    footer = (
+        f"\n{'═'*50}\n"
+        f"✅ Completado en {elapsed:.1f}s — {datetime.now().strftime('%H:%M:%S')}\n"
+        f"   Abre el informe: xdg-open informe.html\n"
+        f"{'═'*50}\n"
+    )
+    log(footer)
 
 
 if __name__ == "__main__":
